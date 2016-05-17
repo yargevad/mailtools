@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"mime"
+	"mime/multipart"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -72,7 +77,7 @@ func main() {
 	}
 
 	// Make sure there's a mailbox directory
-	msgDir := fmt.Sprintf("%s/%s", baseDir, ctx.IMAP.Mailbox.Name)
+	msgDir := fmt.Sprintf("%s/%s/%s", baseDir, ctx.User, ctx.IMAP.Mailbox.Name)
 	if hasDownload {
 		err = os.Mkdir(msgDir, 0755)
 		if err != nil {
@@ -111,11 +116,16 @@ func main() {
 	log.Printf("search returned %d elements:\n", len(uids))
 	for idx, uid := range uids {
 		log.Printf("- uid=%d (%d/%d)\n", uid, idx, len(uids))
+		var msgBytes []byte
 		if hasDownload {
 			msgFile := fmt.Sprintf("%s/%d.eml", msgDir, uid)
 			file, err := os.Open(msgFile)
 			if err == nil {
 				defer file.Close()
+				msgBytes, err = ioutil.ReadFile(msgFile)
+				if err != nil {
+					log.Fatal(err)
+				}
 				log.Printf("  file cached for uid %d: %s\n", uid, msgFile)
 			} else if os.IsNotExist(err) {
 				file, err := os.Create(msgFile)
@@ -132,10 +142,66 @@ func main() {
 				if err != nil {
 					log.Fatal(err)
 				}
-				log.Printf("  got %d bytes for uid %d\n", len(msgBytes), uid)
+				log.Printf("  saved %d bytes for uid %d\n", len(msgBytes), uid)
+
 			} else {
 				log.Fatal(err)
 			}
+
+			if msgBytes != nil {
+				// parse top-level message
+				buf := bytes.NewReader(msgBytes)
+				m, err := mail.ReadMessage(buf)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				// get Content-Type, pull out boundary
+				ctype := m.Header.Get("Content-Type")
+				// TODO: skip if not multipart/mixed at top level
+				mtype, params, err := mime.ParseMediaType(ctype)
+				if err != nil {
+					log.Fatal(err)
+				}
+				log.Printf("Content-Type: %s\n", mtype)
+				// TODO: skip if no "boundary" key
+				for k, v := range params {
+					log.Printf("%s = %s\n", k, v)
+				}
+
+				buf.Seek(0, 0)
+				mpr := multipart.NewReader(buf, params["boundary"])
+
+				for {
+					// content-disposition: attachment
+					part, err := mpr.NextPart()
+					if err != nil {
+						if err == io.EOF {
+							break
+						}
+						log.Fatal(err)
+					}
+					if attFile := part.FileName(); attFile != "" {
+						log.Printf("found attachment: %s\n", attFile)
+						attBytes := make([]byte, 5*1024*1024)
+						idx := 0
+						for {
+							n, err := part.Read(attBytes[idx:])
+							if err != nil {
+								if err == io.EOF {
+									break
+								}
+								log.Fatal(err)
+							}
+							idx += n
+							log.Printf("read %d bytes to %d\n", n, idx)
+						}
+						// TODO: do "stuff" with in-memory zip file
+					}
+
+				}
+			}
+
 		}
 	}
 }
