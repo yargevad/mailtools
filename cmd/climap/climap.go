@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/yargevad/mailtools/imaputil"
 )
 
@@ -184,7 +185,7 @@ func main() {
 					if attFile := part.FileName(); attFile != "" {
 						log.Printf("found attachment: %s\n", attFile)
 						attBytes := make([]byte, 5*1024*1024)
-						idx := 0
+						idx := uint64(0)
 						for {
 							n, err := part.Read(attBytes[idx:])
 							if err != nil {
@@ -193,9 +194,10 @@ func main() {
 								}
 								log.Fatal(err)
 							}
-							idx += n
-							log.Printf("read %d bytes to %d\n", n, idx)
+							idx += uint64(n)
+							//log.Printf("read %d bytes to %d\n", n, idx)
 						}
+						log.Printf("read %s from %s\n", humanize.Bytes(idx), attFile)
 						// TODO: do "stuff" with in-memory zip file
 					}
 
