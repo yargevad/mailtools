@@ -1,21 +1,18 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
-	"mime"
-	"mime/multipart"
-	"net/mail"
 	"os"
 	"strings"
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/yargevad/mailtools/imaputil"
+	"github.com/yargevad/mailtools/mimeutil"
 )
 
 var mbox = flag.String("mbox", "INBOX", "mailbox name")
@@ -150,58 +147,11 @@ func main() {
 			}
 
 			if msgBytes != nil {
-				// parse top-level message
-				buf := bytes.NewReader(msgBytes)
-				m, err := mail.ReadMessage(buf)
+				att, err := mimeutil.DecodeAttachment(msgBytes)
 				if err != nil {
 					log.Fatal(err)
 				}
-
-				// get Content-Type, pull out boundary
-				ctype := m.Header.Get("Content-Type")
-				// TODO: skip if not multipart/mixed at top level
-				mtype, params, err := mime.ParseMediaType(ctype)
-				if err != nil {
-					log.Fatal(err)
-				}
-				log.Printf("Content-Type: %s\n", mtype)
-				// TODO: skip if no "boundary" key
-				for k, v := range params {
-					log.Printf("%s = %s\n", k, v)
-				}
-
-				buf.Seek(0, 0)
-				mpr := multipart.NewReader(buf, params["boundary"])
-
-				for {
-					// content-disposition: attachment
-					part, err := mpr.NextPart()
-					if err != nil {
-						if err == io.EOF {
-							break
-						}
-						log.Fatal(err)
-					}
-					if attFile := part.FileName(); attFile != "" {
-						log.Printf("found attachment: %s\n", attFile)
-						attBytes := make([]byte, 5*1024*1024)
-						idx := uint64(0)
-						for {
-							n, err := part.Read(attBytes[idx:])
-							if err != nil {
-								if err == io.EOF {
-									break
-								}
-								log.Fatal(err)
-							}
-							idx += uint64(n)
-							//log.Printf("read %d bytes to %d\n", n, idx)
-						}
-						log.Printf("read %s from %s\n", humanize.Bytes(idx), attFile)
-						// TODO: do "stuff" with in-memory zip file
-					}
-
-				}
+				log.Printf("read %s from %s\n", humanize.Bytes(att.Length), att.Filename)
 			}
 
 		}
