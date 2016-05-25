@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
@@ -27,21 +26,9 @@ func main() {
 	hasDownload := (download != nil && *download != false)
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	ctx := imaputil.ImapCtx{}
-
-	ctx.Host = os.Getenv("CLIMAP_HOST")
-	if ctx.Host == "" {
-		log.Fatal("No IMAP host set in environment! (CLIMAP_HOST)\n")
-	}
-
-	ctx.User = os.Getenv("CLIMAP_USER")
-	if ctx.User == "" {
-		log.Fatal("No IMAP user set in environment! (CLIMAP_USER)\n")
-	}
-
-	ctx.Pass = os.Getenv("CLIMAP_PASS")
-	if ctx.Pass == "" {
-		log.Fatal("No IMAP password set in environment! (CLIMAP_PASS)\n")
+	ctx, err := imaputil.EnvConnect("CLIMAP_")
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	baseDir := os.Getenv("CLIMAP_BASE")
@@ -49,18 +36,6 @@ func main() {
 		log.Fatal("No base directory set for saving messages! (CLIMAP_BASE)\n")
 	}
 
-	serverName := os.Getenv("CLIMAP_TLS_SERVERNAME")
-	if serverName != "" {
-		ctx.TLS.ServerName = serverName
-	}
-
-	err := ctx.Init()
-	if err != nil {
-		if strings.HasPrefix(err.Error(), "x509: certificate is valid for ") {
-			log.Printf("HINT: set CLIMAP_TLS_SERVERNAME to work around certificate domain mismatches\n")
-		}
-		log.Fatal(err)
-	}
 	defer ctx.IMAP.Logout(10 * time.Second)
 
 	log.Printf("Login successful for %s at %s\n", ctx.User, ctx.Host)

@@ -3,6 +3,8 @@ package imaputil
 import (
 	"crypto/tls"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/mxk/go-imap/imap"
 )
@@ -57,6 +59,44 @@ func (ctx *ImapCtx) Init() error {
 		return err
 	}
 	return nil
+}
+
+// EnvConnect is a convenience method which gathers config from the environment,
+// and attempts a connection if it can find what it needs.
+func EnvConnect(prefix string) (*ImapCtx, error) {
+	ctx := &ImapCtx{}
+	host := fmt.Sprintf("%sHOST", prefix)
+	ctx.Host = os.Getenv(host)
+	if ctx.Host == "" {
+		return nil, fmt.Errorf("No IMAP host set in environment! (%s)", host)
+	}
+
+	user := fmt.Sprintf("%sUSER", prefix)
+	ctx.User = os.Getenv(user)
+	if ctx.User == "" {
+		return nil, fmt.Errorf("No IMAP user set in environment! (%s)", user)
+	}
+
+	pass := fmt.Sprintf("%sPASS", prefix)
+	ctx.Pass = os.Getenv(pass)
+	if ctx.Pass == "" {
+		return nil, fmt.Errorf("No IMAP pass set in environment! (%s)", pass)
+	}
+
+	serverName := os.Getenv(fmt.Sprintf("%sTLS_SERVERNAME", prefix))
+	if serverName != "" {
+		ctx.TLS.ServerName = serverName
+	}
+
+	err := ctx.Init()
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "x509: certificate is valid for ") {
+			return nil, fmt.Errorf("%s; HINT: set %sTLS_SERVERNAME to work around certificate domain mismatches", err, prefix)
+		}
+		return nil, err
+	}
+
+	return ctx, nil
 }
 
 func (ctx *ImapCtx) Mailbox(boxName string) error {
