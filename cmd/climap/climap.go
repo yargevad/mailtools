@@ -21,18 +21,16 @@ var download = flag.Bool("download", false, "should matching messages be downloa
 
 func main() {
 	flag.Parse()
-	hasSubject := (subject != nil && *subject != "")
-	hasNewer := (newer != nil && *newer != "")
-	hasDownload := (download != nil && *download != false)
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	ctx, err := imaputil.EnvConnect("CLIMAP_")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	baseDir := os.Getenv("CLIMAP_BASE")
-	if baseDir == "" && hasDownload {
+	if baseDir == "" && *download == true {
 		log.Fatal("No base directory set for saving messages! (CLIMAP_BASE)\n")
 	}
 
@@ -40,7 +38,7 @@ func main() {
 
 	log.Printf("Login successful for %s at %s\n", ctx.User, ctx.Host)
 
-	if !hasSubject && !hasNewer {
+	if *subject == "" && *newer == "" {
 		os.Exit(0)
 	}
 
@@ -49,9 +47,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Make sure there's a mailbox directory
+	// Make sure there's a local mailbox directory
 	msgDir := fmt.Sprintf("%s/%s/%s", baseDir, ctx.User, ctx.IMAP.Mailbox.Name)
-	if hasDownload {
+	if *download == true {
 		err = os.Mkdir(msgDir, 0755)
 		if err != nil {
 			if !os.IsExist(err) {
@@ -60,8 +58,8 @@ func main() {
 		}
 	}
 
-	var crit []string
-	if hasNewer {
+	var criteria []string
+	if *newer != "" {
 		dur, err := time.ParseDuration(*newer)
 		if err != nil {
 			log.Fatal(err)
@@ -71,18 +69,18 @@ func main() {
 		if !ok {
 			log.Fatalf("Error quoting date [%s]\n", sinceStr)
 		}
-		crit = append(crit, []string{"SINCE", sinceStr}...)
+		criteria = append(criteria, "SINCE", sinceStr)
 	}
 
-	if hasSubject {
+	if *subject != "" {
 		subjectStr, ok := ctx.IMAP.Quote(*subject).(string)
 		if !ok {
 			log.Fatalf("Error quoting subject [%s]\n", subjectStr)
 		}
-		crit = append(crit, []string{"SUBJECT", subjectStr}...)
+		criteria = append(criteria, "SUBJECT", subjectStr)
 	}
 
-	uids, err := ctx.Search(crit)
+	uids, err := ctx.Search(criteria)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -90,7 +88,7 @@ func main() {
 	for idx, uid := range uids {
 		log.Printf("- uid=%d (%d/%d)\n", uid, idx, len(uids))
 		var msgBytes []byte
-		if hasDownload {
+		if *download == true {
 			msgFile := fmt.Sprintf("%s/%d.eml", msgDir, uid)
 			file, err := os.Open(msgFile)
 			if err == nil {
