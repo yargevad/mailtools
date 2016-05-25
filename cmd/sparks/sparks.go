@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	sparkpost "github.com/SparkPost/gosparkpost"
+	sp "github.com/SparkPost/gosparkpost"
 )
 
 var from = flag.String("from", "default@sparkpostbox.com", "where the mail came from")
@@ -55,7 +55,7 @@ func main() {
 		log.Fatal("FATAL: must specify one of --html or --text!\n")
 	}
 
-	cfg := &sparkpost.Config{ApiKey: apiKey}
+	cfg := &sp.Config{ApiKey: apiKey}
 	if strings.TrimSpace(*url) != "" {
 		if !strings.HasPrefix(*url, "https://") {
 			log.Fatal("FATAL: base url must be https!\n")
@@ -63,16 +63,17 @@ func main() {
 		cfg.BaseUrl = *url
 	}
 
-	var sparky sparkpost.Client
+	var sparky sp.Client
 	err := sparky.Init(cfg)
 	if err != nil {
 		log.Fatalf("SparkPost client init failed: %s\n", err)
 	}
 
-	content := sparkpost.Content{
+	content := sp.Content{
 		From:    *from,
 		Subject: *subject,
 	}
+
 	if hasHtml {
 		if strings.Contains(*htmlFlag, "/") {
 			// read file to get html
@@ -110,7 +111,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		img := sparkpost.InlineImage{
+		img := sp.InlineImage{
 			MIMEType: imgra[0],
 			Filename: imgra[1],
 			B64Data:  base64.StdEncoding.EncodeToString(imgBytes),
@@ -118,36 +119,12 @@ func main() {
 		content.InlineImages = append(content.InlineImages, img)
 	}
 
-	tx := &sparkpost.Transmission{}
+	tx := &sp.Transmission{}
 
 	hasCc := strings.TrimSpace(*cc) != ""
 	hasBcc := strings.TrimSpace(*bcc) != ""
 
-	if hasCc {
-		// need to set `header_to`; can't do that with string recipients
-		tx.Recipients = []sparkpost.Recipient{
-			{Address: sparkpost.Address{Email: *to}},
-			{Address: sparkpost.Address{Email: *cc, HeaderTo: *to}},
-		}
-		if content.Headers == nil {
-			content.Headers = map[string]string{}
-		}
-		content.Headers["cc"] = *cc
-		if hasBcc {
-			tx.Recipients = append(tx.Recipients.([]sparkpost.Recipient),
-				sparkpost.Recipient{
-					Address: sparkpost.Address{Email: *bcc, HeaderTo: *to}})
-		}
-	} else if hasBcc {
-		tx.Recipients = []sparkpost.Recipient{
-			{Address: sparkpost.Address{Email: *to}},
-			{Address: sparkpost.Address{Email: *bcc, HeaderTo: *to}},
-		}
-	} else {
-		tx.Recipients = []string{*to}
-	}
-	tx.Content = content
-
+	var subJson *json.RawMessage
 	if hasSubs {
 		var subsBytes []byte
 		if strings.Contains(*subsFlag, "/") {
@@ -160,30 +137,58 @@ func main() {
 			subsBytes = []byte(*subsFlag)
 		}
 
-		recip := sparkpost.Recipient{Address: *to, SubstitutionData: json.RawMessage{}}
-		err = json.Unmarshal(subsBytes, &recip.SubstitutionData)
+		subJson = &json.RawMessage{}
+		err = json.Unmarshal(subsBytes, subJson)
 		if err != nil {
 			log.Fatal(err)
 		}
-		// FIXME: this clobbers any cc/bcc recipients
-		tx.Recipients = []sparkpost.Recipient{recip}
 	}
+
+	if hasCc {
+		// need to set `header_to`; can't do that with string recipients
+		tx.Recipients = []sp.Recipient{
+			{Address: sp.Address{Email: *to}, SubstitutionData: subJson},
+			{Address: sp.Address{Email: *cc, HeaderTo: *to}, SubstitutionData: subJson},
+		}
+		if content.Headers == nil {
+			content.Headers = map[string]string{}
+		}
+		content.Headers["cc"] = *cc
+		if hasBcc {
+			tx.Recipients = append(tx.Recipients.([]sp.Recipient),
+				sp.Recipient{
+					Address: sp.Address{Email: *bcc, HeaderTo: *to}, SubstitutionData: subJson})
+		}
+	} else if hasBcc {
+		tx.Recipients = []sp.Recipient{
+			{Address: sp.Address{Email: *to}, SubstitutionData: subJson},
+			{Address: sp.Address{Email: *bcc, HeaderTo: *to}, SubstitutionData: subJson},
+		}
+	} else {
+		if subJson == nil {
+			tx.Recipients = []string{*to}
+		} else {
+			tx.Recipients = []sp.Recipient{
+				{Address: sp.Address{Email: *to}, SubstitutionData: subJson}}
+		}
+	}
+	tx.Content = content
 
 	if strings.TrimSpace(*sendDelay) != "" {
 		if tx.Options == nil {
-			tx.Options = &sparkpost.TxOptions{}
+			tx.Options = &sp.TxOptions{}
 		}
 		dur, err := time.ParseDuration(*sendDelay)
 		if err != nil {
 			log.Fatal(err)
 		}
-		start := sparkpost.RFC3339(time.Now().Add(dur))
+		start := sp.RFC3339(time.Now().Add(dur))
 		tx.Options.StartTime = &start
 	}
 
 	if *inline != false {
 		if tx.Options == nil {
-			tx.Options = &sparkpost.TxOptions{}
+			tx.Options = &sp.TxOptions{}
 		}
 		tx.Options.InlineCSS = true
 	}
