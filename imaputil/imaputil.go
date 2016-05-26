@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/mxk/go-imap/imap"
 )
@@ -97,6 +98,19 @@ func EnvConnect(prefix string) (*ImapCtx, error) {
 	}
 
 	return ctx, nil
+}
+
+func (ctx *ImapCtx) Since(duration string) ([]string, error) {
+	dur, err := time.ParseDuration(duration)
+	if err != nil {
+		return nil, err
+	}
+	sinceStr := time.Now().Add(-dur).Format("2-Jan-2006")
+	quotedSinceStr, ok := ctx.IMAP.Quote(sinceStr).(string)
+	if !ok {
+		return nil, fmt.Errorf("Error quoting date [%s]", sinceStr)
+	}
+	return []string{"SINCE", quotedSinceStr}, nil
 }
 
 func (ctx *ImapCtx) Mailbox(boxName string) error {

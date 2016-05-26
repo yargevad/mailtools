@@ -60,16 +60,11 @@ func main() {
 
 	var criteria []string
 	if *newer != "" {
-		dur, err := time.ParseDuration(*newer)
+		tmp, err := ctx.Since(*newer)
 		if err != nil {
 			log.Fatal(err)
 		}
-		sinceStr := time.Now().Add(-dur).Format("2-Jan-2006")
-		sinceStr, ok := ctx.IMAP.Quote(sinceStr).(string)
-		if !ok {
-			log.Fatalf("Error quoting date [%s]\n", sinceStr)
-		}
-		criteria = append(criteria, "SINCE", sinceStr)
+		criteria = append(criteria, tmp...)
 	}
 
 	if *subject != "" {
@@ -85,6 +80,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("search returned %d elements:\n", len(uids))
+
 	for idx, uid := range uids {
 		log.Printf("- uid=%d (%d/%d)\n", uid, idx, len(uids))
 		var msgBytes []byte
