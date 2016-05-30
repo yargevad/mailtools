@@ -102,6 +102,9 @@ func main() {
 				defer file.Close()
 
 				msgBytes, err := ctx.MessageByUID(uid)
+				if err != nil {
+					log.Fatal(err)
+				}
 				n, err := file.Write(msgBytes)
 				if err == nil && n < len(msgBytes) {
 					err = io.ErrShortWrite

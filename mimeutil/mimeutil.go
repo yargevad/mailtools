@@ -2,11 +2,13 @@ package mimeutil
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/mail"
+	"unicode"
 )
 
 const (
@@ -16,19 +18,9 @@ const (
 type Attachment struct {
 	Filename string
 	Length   uint64
-	content  []byte
+	Content  []byte
 	frags    [][]byte
-}
-
-func (a *Attachment) Content() []byte {
-	if a.content != nil && a.frags == nil {
-		return a.content
-	} else if a.content == nil && a.frags != nil {
-		a.content = bytes.Join(a.frags, []byte(""))
-		a.frags = nil
-		return a.content
-	}
-	return nil
+	encoding string
 }
 
 // DecodeAttachment returns the content of the first attachment in a multipart MIME message.
@@ -65,6 +57,7 @@ func DecodeAttachment(msg []byte) (*Attachment, error) {
 			return nil, err
 		}
 
+		// TODO: require that filenames match a pattern
 		if attFile := part.FileName(); attFile != "" {
 			var bufs [][]byte
 			attLen := uint64(0)
@@ -81,6 +74,27 @@ func DecodeAttachment(msg []byte) (*Attachment, error) {
 				bufs = append(bufs, buf[:n])
 			}
 			att := &Attachment{Filename: attFile, Length: attLen, frags: bufs}
+			att.encoding = part.Header.Get("Content-Transfer-Encoding")
+			att.Content = bytes.Join(att.frags, []byte(""))
+			if att.encoding == "" {
+			} else if att.encoding == "base64" {
+				// remove whitespace
+				tmp := bytes.Map(func(r rune) rune {
+					if unicode.IsSpace(r) {
+						return -1
+					}
+					return r
+				}, att.Content)
+				n, err := base64.StdEncoding.Decode(att.Content, tmp)
+				if err != nil {
+					return nil, err
+				}
+				att.Content = att.Content[:n]
+				att.Length = uint64(n)
+
+			} else {
+				return att, fmt.Errorf("Unsupported Content-Transfer-Encoding [%s]", att.encoding)
+			}
 			return att, nil
 		}
 
