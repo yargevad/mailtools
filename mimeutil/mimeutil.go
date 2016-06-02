@@ -2,12 +2,14 @@ package mimeutil
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/mail"
+	"strings"
 	"unicode"
 )
 
@@ -21,6 +23,17 @@ type Attachment struct {
 	Content  []byte
 	frags    [][]byte
 	encoding string
+}
+
+func GenBoundary() ([]byte, error) {
+	var buf [45]byte
+	var enc [60]byte
+	_, err := io.ReadFull(rand.Reader, buf[:])
+	if err != nil {
+		return nil, err
+	}
+	base64.StdEncoding.Encode(enc[:], buf[:])
+	return enc[:], nil
 }
 
 // DecodeAttachment returns the content of the first attachment in a multipart MIME message.
@@ -37,7 +50,7 @@ func DecodeAttachment(msg []byte) (*Attachment, error) {
 		return nil, err
 	}
 
-	if mtype != "multipart/mixed" {
+	if !strings.HasPrefix(mtype, "multipart/") {
 		return nil, fmt.Errorf("Unsupported top-level Content-Type [%s]", mtype)
 	}
 
