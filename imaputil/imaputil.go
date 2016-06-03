@@ -100,11 +100,7 @@ func EnvConnect(prefix string) (*ImapCtx, error) {
 	return ctx, nil
 }
 
-func (ctx *ImapCtx) Since(duration string) ([]string, error) {
-	dur, err := time.ParseDuration(duration)
-	if err != nil {
-		return nil, err
-	}
+func (ctx *ImapCtx) Since(dur time.Duration) ([]string, error) {
 	sinceStr := time.Now().Add(-dur).Format("2-Jan-2006")
 	quotedSinceStr, ok := ctx.IMAP.Quote(sinceStr).(string)
 	if !ok {
@@ -152,31 +148,39 @@ func (ctx *ImapCtx) Search(terms []string) (uids []uint32, err error) {
 }
 
 func (ctx *ImapCtx) MessageByUID(uid uint32) ([]byte, error) {
+	return ctx.PartByUID(uid, "BODY[]")
+}
+
+func (ctx *ImapCtx) HeadersByUID(uid uint32) ([]byte, error) {
+	return ctx.PartByUID(uid, "RFC822.HEADER")
+}
+
+func (ctx *ImapCtx) PartByUID(uid uint32, part string) ([]byte, error) {
 	set, err := imap.NewSeqSet(fmt.Sprintf("%d", uid))
 	if err != nil {
 		return nil, err
 	}
 
-	fetch, err := CheckOK(ctx.IMAP.Fetch(set, "BODY[]"))
+	fetch, err := CheckOK(ctx.IMAP.Fetch(set, part))
 	if err != nil {
 		return nil, err
 	}
 
 	if len(fetch.Data) > 0 {
-		return BodyFromFields(fetch.Data[0].Fields), nil
+		return PartFromFields(fetch.Data[0].Fields, part), nil
 	}
 
 	return nil, nil
 }
 
-func BodyFromFields(fields []imap.Field) []byte {
+func PartFromFields(fields []imap.Field, part string) []byte {
 	for _, field := range fields {
 		ftype := imap.TypeOf(field)
 		if ftype == imap.List {
 			fmap := imap.AsFieldMap(field)
 			for k, v := range fmap {
 				vtype := imap.TypeOf(v)
-				if k == "BODY[]" && vtype == imap.LiteralString {
+				if k == part && vtype == imap.LiteralString {
 					return imap.AsBytes(v)
 				}
 			}
