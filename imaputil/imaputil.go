@@ -64,8 +64,10 @@ func (ctx *ImapCtx) Init() error {
 
 // EnvConnect is a convenience method which gathers config from the environment,
 // and attempts a connection if it can find what it needs.
-func EnvConnect(prefix string) (*ImapCtx, error) {
-	ctx := &ImapCtx{}
+func EnvConnect(prefix string, ctx *ImapCtx) (*ImapCtx, error) {
+	if ctx == nil {
+		ctx = &ImapCtx{}
+	}
 	host := fmt.Sprintf("%sHOST", prefix)
 	ctx.Host = os.Getenv(host)
 	if ctx.Host == "" {
